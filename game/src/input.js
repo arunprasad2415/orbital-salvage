@@ -1,51 +1,82 @@
-// Keyboard and mouse state. Movement is WASD or arrows; aiming is the mouse; firing is
-// click or hold, with space as an alternative so the game is playable keyboard-only.
-export class Input {
-  constructor(canvas) {
-    this.canvas = canvas;
-    this.keys = new Set();
-    this.mouse = { x: canvas.width * 0.5, y: canvas.height * 0.5, down: false };
-    this.pressed = new Set();   // edge-triggered keys, cleared each frame by consume()
-    this.onFirstGesture = null;
+// Keyboard and pointer state. One listener set for the whole run; the game only
+// reads `held`, `pressed` and the pointer each frame.
+//
+// Keys are stored by their logical name, not the raw KeyboardEvent.code: "KeyW"
+// becomes "W", "ShiftLeft" becomes "SHIFT", so the game can ask for "W" and
+// "SHIFT" and mean it whatever side of the keyboard was pressed.
+export function attachInput(canvas) {
+  const held = new Set();
+  const pressed = new Set();
+  const pointer = { x: 640, y: 400, down: false, moved: 0 };
 
-    window.addEventListener("keydown", (e) => {
-      const k = e.key.toLowerCase();
-      if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(k)) e.preventDefault();
-      if (!this.keys.has(k)) this.pressed.add(k);
-      this.keys.add(k);
-      this._gesture();
-    });
-    window.addEventListener("keyup", (e) => this.keys.delete(e.key.toLowerCase()));
-    window.addEventListener("blur", () => { this.keys.clear(); this.mouse.down = false; });
+  const STICKY = {
+    SHIFTLEFT: "SHIFT",
+    SHIFTRIGHT: "SHIFT",
+    CONTROLLEFT: "CTRL",
+    CONTROLRIGHT: "CTRL",
+    ALTLEFT: "ALT",
+    ALTRIGHT: "ALT",
+    ESCAPE: "ESC",
+  };
 
-    canvas.addEventListener("mousemove", (e) => {
-      const r = canvas.getBoundingClientRect();
-      this.mouse.x = (e.clientX - r.left) * (canvas.width / r.width);
-      this.mouse.y = (e.clientY - r.top) * (canvas.height / r.height);
-    });
-    canvas.addEventListener("mousedown", (e) => { e.preventDefault(); this.mouse.down = true; this._gesture(); });
-    window.addEventListener("mouseup", () => { this.mouse.down = false; });
-    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  function name(e) {
+    const code = (e.code || "").toUpperCase();
+    if (code.startsWith("KEY") && code.length === 4) return code.slice(3);
+    if (code.startsWith("DIGIT") && code.length === 6) return code.slice(5);
+    return STICKY[code] ?? code;
   }
 
-  _gesture() {
-    if (this.onFirstGesture) { this.onFirstGesture(); this.onFirstGesture = null; }
+  const BLOCK = new Set(["SPACE", "ARROWUP", "ARROWDOWN", "ARROWLEFT", "ARROWRIGHT"]);
+
+  window.addEventListener("keydown", (e) => {
+    const k = name(e);
+    if (BLOCK.has(k)) e.preventDefault();
+    if (!held.has(k)) pressed.add(k);
+    held.add(k);
+  });
+
+  window.addEventListener("keyup", (e) => held.delete(name(e)));
+  window.addEventListener("blur", () => {
+    held.clear();
+    pointer.down = false;
+  });
+
+  function track(e) {
+    const box = canvas.getBoundingClientRect();
+    const sx = canvas.width / (box.width || 1);
+    const sy = canvas.height / (box.height || 1);
+    pointer.x = (e.clientX - box.left) * sx;
+    pointer.y = (e.clientY - box.top) * sy;
+    pointer.moved = 1.5;
   }
 
-  axis() {
-    const k = this.keys;
-    const x = (k.has("d") || k.has("arrowright") ? 1 : 0) - (k.has("a") || k.has("arrowleft") ? 1 : 0);
-    const y = (k.has("s") || k.has("arrowdown") ? 1 : 0) - (k.has("w") || k.has("arrowup") ? 1 : 0);
-    return { x, y };
-  }
+  canvas.addEventListener("mousemove", track);
+  canvas.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    track(e);
+    pointer.down = true;
+  });
+  window.addEventListener("mouseup", () => {
+    pointer.down = false;
+  });
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-  firing() { return this.mouse.down || this.keys.has(" "); }
-
-  // True once per key press, for actions that must not repeat while held.
-  hit(...names) {
-    for (const n of names) if (this.pressed.has(n)) return true;
-    return false;
-  }
-
-  endFrame() { this.pressed.clear(); }
+  return {
+    held,
+    pressed,
+    pointer,
+    any(...keys) {
+      return keys.some((k) => held.has(k));
+    },
+    took(...keys) {
+      return keys.some((k) => pressed.has(k));
+    },
+    aim() {
+      return pointer;
+    },
+    endFrame(dt) {
+      pressed.clear();
+      pointer.moved = Math.max(0, pointer.moved - dt);
+    },
+  };
 }

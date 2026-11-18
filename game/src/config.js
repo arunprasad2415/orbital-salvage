@@ -1,60 +1,64 @@
-// Tunable constants and the palette. Every number a designer would want to change lives here.
+// Tuning constants and the palette. One place to change how the game feels.
 export const WORLD = { w: 1280, h: 800 };
 
 export const COLORS = {
-  void: "#05060d",
-  grid: "#121a2e",
-  hull: "#8ff0e0",
-  hullDark: "#2b8f88",
-  thrust: "#ffb457",
-  fuel: "#7cf67c",
-  fuelDim: "#2f6b35",
-  rock: "#6b7590",
-  rockEdge: "#9aa6c4",
-  drone: "#ff5d73",
-  droneEdge: "#ffa8b6",
-  bullet: "#c9f7ff",
-  text: "#e8f2ff",
-  dim: "#6f7d99",
-  warn: "#ff9d5c",
-  good: "#7cf67c",
-  bad: "#ff5d73",
+  sky0: "#05060d",
+  sky1: "#0b1226",
+  nebula: "#1b2b5a",
+  star: ["#4a5f8c", "#7d93c4", "#cfd9ee"],
+  hull: "#dfe9ff",
+  hullDark: "#2a3654",
+  thruster: "#ffb454",
+  thrusterCore: "#fff2d0",
+  rock: "#3a4159",
+  rockEdge: "#7f8db3",
+  drone: "#ff5d6c",
+  droneShell: "#4a1622",
+  eye: "#ffd3a1",
+  bolt: "#ff8a6b",
+  cell: "#5ef2a0",
+  cellCore: "#e8fff2",
+  bullet: "#9fe8ff",
+  hud: "#c8d6f2",
+  hudDim: "#5a6b8f",
+  good: "#5ef2a0",
+  warn: "#ffcc66",
+  danger: "#ff5d6c",
+  text: "#eaf1ff",
 };
 
-export const PLAYER = {
-  radius: 14,
-  accel: 1500,          // px/s^2
-  maxSpeed: 420,
-  drag: 2.4,
-  hullMax: 3,
-  fireDelay: 0.13,      // seconds between shots
-  bulletSpeed: 760,
-  bulletLife: 0.9,
-  invulnAfterHit: 1.4,
+export const SHIP = {
+  turnRate: 3.5,
+  thrust: 360,
+  reverse: 150,
+  drag: 0.55,
+  maxSpeed: 430,
+  radius: 15,
+  fireDelay: 0.16,
+  bulletSpeed: 720,
+  bulletLife: 0.85,
+  invuln: 1.6,
+  dashSpeed: 780,
+  dashTime: 0.16,
+  dashCooldown: 2.6,
 };
 
-export const ORBIT = {
+export const RUN = {
+  hullStart: 3,
   fuelMax: 100,
-  drainPerSecond: 2.6,  // the orbit decays, so the run always presses forward
-  cellValue: 14,
-  cellRadius: 9,
+  fuelDrain: 1.9,
+  cellFuel: 26,
+  cellLife: 9,
+  comboWindow: 3.4,
+  waves: 5,
 };
 
-export const WAVES = {
-  total: 5,             // clearing wave 5 wins the run
-  baseRocks: 4,
-  rocksPerWave: 2,
-  baseDrones: 1,
-  dronesPerWave: 1,
-  spawnGap: 0.55,       // seconds between spawns inside a wave
-  breathe: 2.2,         // calm seconds between waves
-};
-
-export const SCORE = {
-  perCell: 25,
-  perRock: 40,
-  perDrone: 90,
-  waveClear: 250,
-  comboWindow: 3.0,     // seconds before the multiplier resets
-  comboMax: 5,
-};
+// Per-wave budget. `rocks` and `drones` are the totals for the window; `kills` is
+// the number of drones that must go down before the next window opens.
+export const WAVE_PLAN = [
+  { rocks: 5, drones: 3, kills: 3, alive: 2, every: 1.8, speed: 1.0, aim: 0 },
+  { rocks: 6, drones: 5, kills: 5, alive: 3, every: 1.6, speed: 1.12, aim: 0.4 },
+  { rocks: 7, drones: 7, kills: 7, alive: 3, every: 1.45, speed: 1.24, aim: 0.7 },
+  { rocks: 8, drones: 9, kills: 9, alive: 4, every: 1.3, speed: 1.36, aim: 0.9 },
+  { rocks: 9, drones: 11, kills: 11, alive: 4, every: 1.15, speed: 1.5, aim: 1.0 },
+];
