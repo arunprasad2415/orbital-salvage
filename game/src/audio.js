@@ -1,9 +1,6 @@
-// Synthesised sound: no audio files, every blip is an oscillator envelope. The
-// context is created on the first gesture (browsers refuse one before that) and
-// every call is a no-op until then, so the game never throws on a silent start.
+// Tiny WebAudio blip synth: every sound in the game is generated, no audio files.
 let ctx = null;
 let master = null;
-let muted = false;
 
 function ensure() {
   if (ctx) return ctx;
@@ -16,58 +13,41 @@ function ensure() {
   return ctx;
 }
 
-function blip(type, from, to, seconds, gain, detune) {
-  const ac = ensure();
-  if (!ac || muted || ac.state === "suspended") return;
-  const now = ac.currentTime;
-  const osc = ac.createOscillator();
-  const env = ac.createGain();
+// A short shaped tone. `type` picks the timbre, `sweep` bends the pitch over the note.
+function blip({ freq = 440, to = null, dur = 0.12, type = "square", gain = 0.5, sweep = 0 }) {
+  const c = ensure();
+  if (!c) return;
+  const t0 = c.currentTime;
+  const osc = c.createOscillator();
+  const env = c.createGain();
   osc.type = type;
-  osc.frequency.setValueAtTime(from, now);
-  osc.frequency.exponentialRampToValueAtTime(Math.max(30, to), now + seconds);
-  if (detune) osc.detune.value = detune;
-  env.gain.setValueAtTime(0.0001, now);
-  env.gain.exponentialRampToValueAtTime(gain, now + 0.012);
-  env.gain.exponentialRampToValueAtTime(0.0001, now + seconds);
-  osc.connect(env).connect(master);
-  osc.start(now);
-  osc.stop(now + seconds + 0.02);
+  osc.frequency.setValueAtTime(freq, t0);
+  if (to !== null) osc.frequency.exponentialRampToValueAtTime(Math.max(30, to), t0 + dur);
+  if (sweep) osc.frequency.linearRampToValueAtTime(freq + sweep, t0 + dur);
+  env.gain.setValueAtTime(0.0001, t0);
+  env.gain.exponentialRampToValueAtTime(gain, t0 + 0.012);
+  env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(env);
+  env.connect(master);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.02);
 }
 
-export const audio = {
-  unlock() {
-    const ac = ensure();
-    if (ac && ac.state === "suspended") ac.resume().catch(() => {});
-  },
-  shoot() {
-    blip("square", 880, 360, 0.09, 0.25, 12);
-  },
-  hit() {
-    blip("triangle", 240, 90, 0.16, 0.4);
-  },
-  rock() {
-    blip("sawtooth", 160, 60, 0.22, 0.3, -8);
-  },
-  pickup() {
-    blip("sine", 620, 1180, 0.14, 0.35);
-  },
-  hurt() {
-    blip("sawtooth", 190, 48, 0.42, 0.5);
-  },
-  wave() {
-    blip("sine", 420, 760, 0.3, 0.3);
-  },
+export const Sfx = {
+  shoot() { blip({ freq: 880, to: 520, dur: 0.07, type: "square", gain: 0.22 }); },
+  pickup() { blip({ freq: 660, to: 990, dur: 0.1, type: "triangle", gain: 0.4 }); },
+  rock() { blip({ freq: 180, to: 70, dur: 0.16, type: "sawtooth", gain: 0.3 }); },
+  drone() { blip({ freq: 320, to: 90, dur: 0.22, type: "sawtooth", gain: 0.34 }); },
+  hurt() { blip({ freq: 240, to: 60, dur: 0.3, type: "square", gain: 0.45 }); },
+  wave() { blip({ freq: 520, to: 1040, dur: 0.28, type: "triangle", gain: 0.35 }); },
   win() {
-    blip("sine", 520, 1320, 0.55, 0.35);
+    [523, 659, 784, 1046].forEach((f, i) => setTimeout(
+      () => blip({ freq: f, dur: 0.24, type: "triangle", gain: 0.4 }), i * 130));
   },
   lose() {
-    blip("triangle", 300, 70, 0.7, 0.4);
+    [400, 300, 200, 120].forEach((f, i) => setTimeout(
+      () => blip({ freq: f, dur: 0.3, type: "sawtooth", gain: 0.4 }), i * 150));
   },
-  toggle() {
-    muted = !muted;
-    return muted;
-  },
-  get isMuted() {
-    return muted;
-  },
+  // Called on the first click, since browsers only allow audio after a gesture.
+  unlock() { const c = ensure(); if (c && c.state === "suspended") c.resume(); },
 };

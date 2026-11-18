@@ -1,260 +1,185 @@
-// The renderer: sky, parallax stars, nebula wash, the tug, rocks, hunters, cells,
-// shots and sparks. Pure drawing, no simulation state is mutated here.
+// All drawing. Every shape is generated here, so the game ships with no image assets.
 import { WORLD, COLORS } from "./config.js";
 
-export function makeStars(rng) {
-  const layers = [[70, 0.35], [46, 0.6], [26, 1]];
-  const stars = [];
-  layers.forEach(([count, depth], layer) => {
-    for (let i = 0; i < count; i++) {
-      stars.push({
-        x: rng() * WORLD.w,
-        y: rng() * WORLD.h,
-        z: depth,
-        size: layer === 2 ? 1.5 : 1,
-        tw: rng() * Math.PI * 2,
-        color: COLORS.star[Math.min(layer, 2)],
-      });
-    }
-  });
-  return stars;
-}
-
-function paintSky(ctx, run, t) {
-  const sky = ctx.createLinearGradient(0, 0, WORLD.w * 0.35, WORLD.h);
-  sky.addColorStop(0, COLORS.sky0);
-  sky.addColorStop(0.55, "#070b18");
-  sky.addColorStop(1, COLORS.sky1);
-  ctx.fillStyle = sky;
+export function drawBackdrop(ctx, stars, t) {
+  ctx.fillStyle = COLORS.void;
   ctx.fillRect(0, 0, WORLD.w, WORLD.h);
 
-  const wash = ctx.createRadialGradient(WORLD.w * 0.72, WORLD.h * 0.28, 40, WORLD.w * 0.72, WORLD.h * 0.28, 520);
-  wash.addColorStop(0, "rgba(46, 84, 168, 0.20)");
-  wash.addColorStop(0.5, "rgba(28, 52, 112, 0.10)");
-  wash.addColorStop(1, "rgba(5, 6, 13, 0)");
-  ctx.fillStyle = wash;
-  ctx.fillRect(0, 0, WORLD.w, WORLD.h);
-
-  const wash2 = ctx.createRadialGradient(WORLD.w * 0.18, WORLD.h * 0.78, 20, WORLD.w * 0.18, WORLD.h * 0.78, 420);
-  wash2.addColorStop(0, "rgba(120, 40, 96, 0.14)");
-  wash2.addColorStop(1, "rgba(5, 6, 13, 0)");
-  ctx.fillStyle = wash2;
-  ctx.fillRect(0, 0, WORLD.w, WORLD.h);
-
-  for (const star of run.stars) {
-    const drift = (star.x - star.z * t * 12) % WORLD.w;
-    const x = drift < 0 ? drift + WORLD.w : drift;
-    const twinkle = 0.55 + 0.45 * Math.sin(t * 1.6 + star.tw);
-    ctx.globalAlpha = (0.25 + star.z * 0.7) * twinkle;
-    ctx.fillStyle = star.color;
-    ctx.fillRect(x, star.y, star.size, star.size);
+  // Parallax starfield, two layers drifting at different speeds.
+  for (const s of stars) {
+    const y = (s.y + t * s.drift) % (WORLD.h + 40) - 20;
+    ctx.globalAlpha = s.a;
+    ctx.fillStyle = s.warm ? "#ffd9a8" : "#cfe6ff";
+    ctx.fillRect(s.x, y, s.size, s.size);
   }
   ctx.globalAlpha = 1;
-}
 
-function polyPath(ctx, rock) {
+  // Faint hex grid to give the play field a sense of deck plating.
+  ctx.strokeStyle = COLORS.grid;
+  ctx.lineWidth = 1;
+  const step = 64;
   ctx.beginPath();
-  rock.verts.forEach((v, i) => {
-    const a = v.a + rock.rot;
-    const px = rock.x + Math.cos(a) * v.d;
-    const py = rock.y + Math.sin(a) * v.d;
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  });
-  ctx.closePath();
-}
+  for (let x = 0; x <= WORLD.w; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, WORLD.h); }
+  for (let y = 0; y <= WORLD.h; y += step) { ctx.moveTo(0, y); ctx.lineTo(WORLD.w, y); }
+  ctx.stroke();
 
-function drawRock(ctx, rock) {
-  polyPath(ctx, rock);
-  const g = ctx.createLinearGradient(rock.x - rock.r, rock.y - rock.r, rock.x + rock.r, rock.y + rock.r);
-  g.addColorStop(0, "#4a526e");
-  g.addColorStop(0.55, COLORS.rock);
-  g.addColorStop(1, "#252b3d");
+  // Orbit limb: a warm rim at the bottom, the planet the salvage yard is falling toward.
+  const g = ctx.createLinearGradient(0, WORLD.h - 170, 0, WORLD.h);
+  g.addColorStop(0, "rgba(255,120,60,0)");
+  g.addColorStop(1, "rgba(255,120,60,0.16)");
   ctx.fillStyle = g;
-  ctx.fill();
-  ctx.lineWidth = 1.6;
-  ctx.strokeStyle = rock.hp > 1 ? "#9fb0d8" : COLORS.rockEdge;
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.arc(rock.x - rock.r * 0.22, rock.y - rock.r * 0.24, rock.r * 0.22, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(160, 180, 220, 0.10)";
-  ctx.fill();
+  ctx.fillRect(0, WORLD.h - 170, WORLD.w, 170);
 }
 
-function drawDrone(ctx, drone, t) {
-  const bob = Math.sin(t * 3 + drone.phase) * 2.5;
-  ctx.save();
-  ctx.translate(drone.x, drone.y + bob);
-  ctx.rotate(Math.sin(t * 2 + drone.phase) * 0.16);
-
-  ctx.beginPath();
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2;
-    const px = Math.cos(a) * drone.r;
-    const py = Math.sin(a) * drone.r;
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-  ctx.fillStyle = drone.flash > 0 ? "#ffd0d4" : COLORS.droneShell;
-  ctx.fill();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = COLORS.drone;
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.arc(0, 0, 6.4, 0, Math.PI * 2);
-  const charge = drone.fire < 0.45 ? 1 - drone.fire / 0.45 : 0;
-  ctx.fillStyle = COLORS.eye;
-  ctx.globalAlpha = 0.55 + 0.45 * charge;
-  ctx.fill();
-  ctx.globalAlpha = 1;
-
-  if (charge > 0) {
-    ctx.beginPath();
-    ctx.arc(0, 0, 10 + charge * 5, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(255, 138, 107, ${0.15 + charge * 0.45})`;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawCell(ctx, cell, t) {
-  const pulse = 0.7 + 0.3 * Math.sin(t * 4 + cell.phase);
-  const fade = cell.ttl < 2.5 ? 0.35 + 0.65 * Math.abs(Math.sin(t * 8)) : 1;
-  ctx.save();
-  ctx.translate(cell.x, cell.y);
-  ctx.rotate(t * 1.2 + cell.phase);
-  ctx.globalAlpha = fade;
-
-  ctx.beginPath();
-  ctx.arc(0, 0, 22 * pulse, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(94, 242, 160, 0.10)";
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.moveTo(0, -13);
-  ctx.lineTo(9, 0);
-  ctx.lineTo(0, 13);
-  ctx.lineTo(-9, 0);
-  ctx.closePath();
-  ctx.fillStyle = COLORS.cell;
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(0, -6);
-  ctx.lineTo(4, 0);
-  ctx.lineTo(0, 6);
-  ctx.lineTo(-4, 0);
-  ctx.closePath();
-  ctx.fillStyle = COLORS.cellCore;
-  ctx.fill();
-  ctx.restore();
-  ctx.globalAlpha = 1;
-}
-
-function drawBullet(ctx, b) {
-  const len = b.hostile ? 12 : 16;
-  const ux = b.vx / (Math.hypot(b.vx, b.vy) || 1);
-  const uy = b.vy / (Math.hypot(b.vx, b.vy) || 1);
-  ctx.beginPath();
-  ctx.moveTo(b.x - ux * len, b.y - uy * len);
-  ctx.lineTo(b.x, b.y);
-  ctx.strokeStyle = b.hostile ? COLORS.bolt : COLORS.bullet;
-  ctx.lineWidth = b.hostile ? 3.5 : 2.6;
-  ctx.lineCap = "round";
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(b.x, b.y, b.hostile ? 3 : 2, 0, Math.PI * 2);
-  ctx.fillStyle = "#ffffff";
-  ctx.fill();
-}
-
-function drawShip(ctx, run, t) {
-  const p = run.player;
-  if (p.invuln > 0 && Math.floor(t * 14) % 2 === 0) return;
-
+export function drawTug(ctx, p) {
+  const blink = p.invuln > 0 && Math.floor(p.invuln * 12) % 2 === 0;
   ctx.save();
   ctx.translate(p.x, p.y);
-  ctx.rotate(p.angle);
+  ctx.rotate(p.angle + Math.PI / 2);
+  ctx.globalAlpha = blink ? 0.45 : 1;
 
   if (p.thrusting) {
-    const flick = 0.7 + 0.3 * Math.sin(t * 40);
+    const flick = 12 + Math.random() * 10;
+    const grad = ctx.createLinearGradient(0, p.r, 0, p.r + flick);
+    grad.addColorStop(0, "rgba(255,180,87,0.95)");
+    grad.addColorStop(1, "rgba(255,90,40,0)");
+    ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.moveTo(-13, -5.5);
-    ctx.lineTo(-13 - 20 * flick, 0);
-    ctx.lineTo(-13, 5.5);
+    ctx.moveTo(-6, p.r - 2);
+    ctx.lineTo(6, p.r - 2);
+    ctx.lineTo(0, p.r + flick);
     ctx.closePath();
-    const flame = ctx.createLinearGradient(-13, 0, -34, 0);
-    flame.addColorStop(0, COLORS.thrusterCore);
-    flame.addColorStop(1, "rgba(255, 122, 60, 0)");
-    ctx.fillStyle = flame;
     ctx.fill();
   }
 
+  // Hull: a swept tug silhouette with a bright cockpit.
   ctx.beginPath();
-  ctx.moveTo(19, 0);
-  ctx.lineTo(-10, 11);
-  ctx.lineTo(-5, 0);
-  ctx.lineTo(-10, -11);
+  ctx.moveTo(0, -p.r - 4);
+  ctx.lineTo(p.r * 0.86, p.r * 0.62);
+  ctx.lineTo(p.r * 0.34, p.r * 0.30);
+  ctx.lineTo(-p.r * 0.34, p.r * 0.30);
+  ctx.lineTo(-p.r * 0.86, p.r * 0.62);
   ctx.closePath();
-  const hull = ctx.createLinearGradient(-10, -11, 19, 11);
-  hull.addColorStop(0, COLORS.hullDark);
-  hull.addColorStop(0.5, COLORS.hull);
-  hull.addColorStop(1, "#8fa4c9");
-  ctx.fillStyle = hull;
+  ctx.fillStyle = COLORS.hullDark;
   ctx.fill();
-  ctx.lineWidth = 1.4;
-  ctx.strokeStyle = "#f4f8ff";
+  ctx.strokeStyle = COLORS.hull;
+  ctx.lineWidth = 2;
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.arc(3, 0, 4, 0, Math.PI * 2);
-  ctx.fillStyle = "#2ad6ff";
+  ctx.arc(0, -p.r * 0.24, p.r * 0.34, 0, Math.PI * 2);
+  ctx.fillStyle = COLORS.hull;
   ctx.fill();
 
-  if (p.dash > 0) {
-    ctx.beginPath();
-    ctx.arc(0, 0, 28, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(159, 232, 255, 0.7)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
+  // Grapple prongs either side.
+  ctx.strokeStyle = COLORS.hull;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-p.r * 0.7, p.r * 0.1); ctx.lineTo(-p.r * 1.15, p.r * 0.5);
+  ctx.moveTo(p.r * 0.7, p.r * 0.1); ctx.lineTo(p.r * 1.15, p.r * 0.5);
+  ctx.stroke();
   ctx.restore();
-  ctx.lineCap = "butt";
+  ctx.globalAlpha = 1;
+}
 
-  if (p.invuln > 0) {
+export function drawRock(ctx, r) {
+  ctx.save();
+  ctx.translate(r.x, r.y);
+  ctx.rotate(r.rot);
+  ctx.beginPath();
+  r.shape.forEach((pt, i) => {
+    const x = Math.cos(pt.a) * r.r * pt.m;
+    const y = Math.sin(pt.a) * r.r * pt.m;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.closePath();
+  ctx.fillStyle = r.hp > 1 ? "#59637d" : COLORS.rock;
+  ctx.fill();
+  ctx.strokeStyle = COLORS.rockEdge;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  // A couple of craters so the rock reads as a rock, not a blob.
+  ctx.fillStyle = "rgba(10,14,24,0.5)";
+  ctx.beginPath(); ctx.arc(-r.r * 0.22, -r.r * 0.12, r.r * 0.2, 0, 6.28); ctx.fill();
+  ctx.beginPath(); ctx.arc(r.r * 0.26, r.r * 0.22, r.r * 0.13, 0, 6.28); ctx.fill();
+  ctx.restore();
+}
+
+export function drawDrone(ctx, d) {
+  ctx.save();
+  ctx.translate(d.x, d.y);
+  const a = Math.atan2(d.vy, d.vx);
+  ctx.rotate(a);
+  ctx.fillStyle = d.flash > 0 ? "#ffffff" : COLORS.drone;
+  ctx.beginPath();
+  ctx.moveTo(d.r, 0);
+  ctx.lineTo(-d.r * 0.7, d.r * 0.72);
+  ctx.lineTo(-d.r * 0.35, 0);
+  ctx.lineTo(-d.r * 0.7, -d.r * 0.72);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = COLORS.droneEdge;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  // Sensor eye, so it reads as a hunter.
+  ctx.fillStyle = "#2a0710";
+  ctx.beginPath(); ctx.arc(d.r * 0.12, 0, d.r * 0.22, 0, 6.28); ctx.fill();
+  ctx.restore();
+}
+
+export function drawCell(ctx, c, t) {
+  const pulse = 1 + Math.sin(t * 4 + c.bob) * 0.14;
+  ctx.save();
+  ctx.translate(c.x, c.y);
+  ctx.globalAlpha = c.ttl < 3 ? 0.45 + Math.sin(t * 18) * 0.3 : 1;
+  ctx.beginPath();
+  ctx.arc(0, 0, c.r * 1.9 * pulse, 0, 6.28);
+  ctx.fillStyle = "rgba(124,246,124,0.12)";
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(0, 0, c.r, 0, 6.28);
+  ctx.fillStyle = COLORS.fuel;
+  ctx.fill();
+  ctx.strokeStyle = COLORS.fuelDim;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // A plus, the universal "pick me up" mark.
+  ctx.strokeStyle = "#0b2a10";
+  ctx.beginPath();
+  ctx.moveTo(-c.r * 0.5, 0); ctx.lineTo(c.r * 0.5, 0);
+  ctx.moveTo(0, -c.r * 0.5); ctx.lineTo(0, c.r * 0.5);
+  ctx.stroke();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+export function drawBullets(ctx, list) {
+  for (const b of list) {
+    ctx.strokeStyle = COLORS.bullet;
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 26, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(159, 232, 255, ${0.15 + 0.25 * Math.sin(t * 10)})`;
-    ctx.lineWidth = 2;
+    ctx.moveTo(b.x, b.y);
+    ctx.lineTo(b.x - b.vx * 0.014, b.y - b.vy * 0.014);
     ctx.stroke();
   }
 }
 
-function drawParticles(ctx, run) {
-  for (const part of run.particles) {
-    const k = Math.max(0, part.life / part.maxLife);
-    ctx.globalAlpha = k;
-    ctx.fillStyle = part.color;
-    ctx.fillRect(part.x - part.size / 2, part.y - part.size / 2, part.size, part.size);
+export function drawParticles(ctx, list) {
+  for (const p of list) {
+    ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
   }
   ctx.globalAlpha = 1;
 }
 
-export function drawWorld(ctx, run, t) {
-  ctx.save();
-  if (run.shake > 0) {
-    const amp = run.shake * 7;
-    ctx.translate((run.rng() - 0.5) * amp, (run.rng() - 0.5) * amp);
-  }
-  paintSky(ctx, run, t);
-  for (const cell of run.cells) drawCell(ctx, cell, t);
-  for (const rock of run.rocks) drawRock(ctx, rock);
-  for (const drone of run.drones) drawDrone(ctx, drone, t);
-  for (const b of run.bullets) drawBullet(ctx, b);
-  drawShip(ctx, run, t);
-  drawParticles(ctx, run);
-  ctx.restore();
+export function makeStars(rng, n) {
+  return Array.from({ length: n }, () => ({
+    x: rng() * WORLD.w,
+    y: rng() * WORLD.h,
+    size: rng() < 0.82 ? 1 : 2,
+    a: 0.18 + rng() * 0.6,
+    drift: 4 + rng() * 16,
+    warm: rng() < 0.18,
+  }));
 }

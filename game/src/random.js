@@ -1,23 +1,20 @@
-// Seeded PRNG (xorshift128) so a seed reproduces a run exactly. No Math.random
-// anywhere in the simulation: screenshots and replays stay byte-stable.
-export function makeRng(seed) {
-  let x = (seed | 0) || 0x9e3779b9;
-  let y = (Math.imul(x, 0x85ebca6b) ^ 0x165667b1) | 0;
-  let z = (Math.imul(y, 0xc2b2ae35) ^ 0x27d4eb2f) | 0;
-  let w = (Math.imul(z, 0x9e3779b1) ^ 0x165667b1) | 0;
-  if ((x | y | z | w) === 0) x = 1;
-
-  function next() {
-    const t = x ^ (x << 11);
-    x = y; y = z; z = w;
-    w = (w ^ (w >>> 19) ^ (t ^ (t >>> 8))) | 0;
-    return w >>> 0;
-  }
-
-  const rng = () => next() / 4294967296;
-  rng.range = (lo, hi) => lo + rng() * (hi - lo);
-  rng.int = (lo, hi) => Math.floor(lo + rng() * (hi - lo + 1));
-  rng.pick = (list) => list[Math.floor(rng() * list.length) % list.length];
-  rng.sign = () => (rng() < 0.5 ? -1 : 1);
-  return rng;
+// Deterministic little random helpers, so a screenshot seed always shows the same frame.
+export function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function next() {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
+
+export const rand = (rng, a, b) => a + rng() * (b - a);
+export const randInt = (rng, a, b) => Math.floor(rand(rng, a, b + 1));
+export const pick = (rng, list) => list[Math.floor(rng() * list.length) % list.length];
+export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+export const lerp = (a, b, t) => a + (b - a) * t;
+export const dist2 = (ax, ay, bx, by) => {
+  const dx = ax - bx, dy = ay - by;
+  return dx * dx + dy * dy;
+};
